@@ -32,6 +32,7 @@ from errata.models import (
     Status,
 )
 from errata.search import filter_staged_errata, search_errata
+from errata.views import REPORTED_LIST_TOC_THRESHOLD
 
 
 class AddressListFieldTest(TestCase):
@@ -772,6 +773,24 @@ class RpcViewTest(TestCase):
         response = self.client.get(reverse("errata_staged_list"))
         self.assertEqual(response.status_code, 200)
 
+    def test_staged_list_shows_total_reports(self):
+        # setUp already created one SUBMITTED staged erratum; add two more.
+        for _ in range(2):
+            StagedErratumFactory(
+                rfc_metadata=self.rfc,
+                rfc_number=self.rfc.rfc_number,
+                entry_status=StagedErratumStatus.SUBMITTED,
+            )
+        # An unsubmitted entry must not be counted.
+        StagedErratumFactory(
+            rfc_metadata=self.rfc,
+            rfc_number=self.rfc.rfc_number,
+            entry_status=StagedErratumStatus.INCOMPLETE,
+        )
+        self.client.force_login(self.rpc_user)
+        response = self.client.get(reverse("errata_staged_list"))
+        self.assertContains(response, "Total reports: 3")
+
     def test_staged_list_post_delete_redirects_to_confirm(self):
         self.client.force_login(self.rpc_user)
         response = self.client.post(
@@ -925,6 +944,49 @@ class RpcViewTest(TestCase):
         self.client.force_login(self.rpc_user)
         response = self.client.get(reverse("errata_reported_list"))
         self.assertEqual(response.status_code, 200)
+
+    def test_reported_list_shows_total(self):
+        # setUp created one technical reported erratum; add two editorial.
+        editorial = ErratumType.objects.get(slug="editorial")
+        for _ in range(2):
+            ErratumFactory(
+                rfc_metadata=self.rfc,
+                rfc_number=self.rfc.rfc_number,
+                erratum_type=editorial,
+            )
+        self.client.force_login(self.rpc_user)
+        response = self.client.get(reverse("errata_reported_list"))
+        self.assertContains(response, "Total reported errata: 3")
+
+    def test_reported_list_splits_technical_and_editorial(self):
+        # setUp created self.erratum (technical, reported). Add editorial ones.
+        editorial = ErratumType.objects.get(slug="editorial")
+        for _ in range(2):
+            ErratumFactory(
+                rfc_metadata=self.rfc,
+                rfc_number=self.rfc.rfc_number,
+                erratum_type=editorial,
+            )
+        self.client.force_login(self.rpc_user)
+        response = self.client.get(reverse("errata_reported_list"))
+        self.assertContains(response, "Reported Technical (1)")
+        self.assertContains(response, "Reported Editorial (2)")
+
+    def test_reported_list_no_toc_when_short(self):
+        self.client.force_login(self.rpc_user)
+        response = self.client.get(reverse("errata_reported_list"))
+        self.assertNotContains(response, "On this page")
+
+    def test_reported_list_shows_toc_when_long(self):
+        for _ in range(REPORTED_LIST_TOC_THRESHOLD):
+            ErratumFactory(
+                rfc_metadata=self.rfc, rfc_number=self.rfc.rfc_number
+            )
+        self.client.force_login(self.rpc_user)
+        response = self.client.get(reverse("errata_reported_list"))
+        self.assertContains(response, "On this page")
+        self.assertContains(response, 'href="#reported-technical"')
+        self.assertContains(response, 'href="#reported-editorial"')
 
     def test_reported_classify_get_returns_200(self):
         self.client.force_login(self.rpc_user)
