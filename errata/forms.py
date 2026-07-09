@@ -5,6 +5,23 @@ from django import forms
 
 from .models import RfcMetadata, Erratum
 
+
+class CaseInsensitiveChoiceField(forms.ChoiceField):
+    """A ChoiceField that matches submitted values regardless of case.
+
+    A case-insensitive match is normalized to the canonical value declared in
+    ``choices`` so downstream processing sees a predictable value.
+    """
+
+    def to_python(self, value):
+        value = super().to_python(value)
+        if value in self.empty_values:
+            return value
+        for choice_value, _ in self.choices:
+            if value.casefold() == str(choice_value).casefold():
+                return str(choice_value)
+        return value
+
 STATUS_CHOICES = [
     ("any", "All/Any"),
     ("verified_reported", "Verified+Reported"),
@@ -53,20 +70,20 @@ PRESENTATION_CHOICES = [
 class ErrataSearchForm(forms.Form):
     rfc_number = forms.IntegerField(required=False, label="RFC Number")
     errata_id = forms.IntegerField(required=False, label="Errata ID")
-    status = forms.ChoiceField(
+    status = CaseInsensitiveChoiceField(
         choices=STATUS_CHOICES, required=False, label="Status", initial="any"
     )
-    area = forms.ChoiceField(
+    area = CaseInsensitiveChoiceField(
         choices=AREA_CHOICES, required=False, label="Area Acronym", initial="any"
     )
-    errata_type = forms.ChoiceField(
+    errata_type = CaseInsensitiveChoiceField(
         choices=TYPE_CHOICES, required=False, label="Type", initial="any"
     )
     wg_acronym = forms.CharField(max_length=40, required=False, label="WG Acronym")
     submitter_name = forms.CharField(
         max_length=80, required=False, label="Submitter Name"
     )
-    stream = forms.ChoiceField(
+    stream = CaseInsensitiveChoiceField(
         choices=STREAM_CHOICES, required=False, label="Stream", initial="any"
     )  # Labeled "Other" in previous errata app
     date = forms.CharField(
@@ -74,7 +91,7 @@ class ErrataSearchForm(forms.Form):
         label="Date Submitted",
         widget=forms.TextInput(attrs={"placeholder": "YYYY-MM-DD, YYYY-MM, or YYYY"}),
     )
-    presentation = forms.ChoiceField(
+    presentation = CaseInsensitiveChoiceField(
         choices=PRESENTATION_CHOICES,
         required=False,
         label="Presentation",
