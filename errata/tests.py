@@ -562,11 +562,35 @@ class PublicViewTest(TestCase):
         )
         self.assertEqual(response.status_code, 200)
 
+    def test_search_table_links_rfc_to_rfc_editor(self):
+        response = self.client.get(
+            reverse("errata_search"),
+            {"rfc_number": self.rfc.rfc_number, "presentation": "table"},
+        )
+        self.assertContains(
+            response,
+            f'href="https://www.rfc-editor.org/info/rfc{self.rfc.rfc_number}"',
+        )
+
+    def test_search_records_links_rfc_to_rfc_editor(self):
+        response = self.client.get(
+            reverse("errata_search"),
+            {"rfc_number": self.rfc.rfc_number, "presentation": "records"},
+        )
+        self.assertContains(
+            response,
+            f'href="https://www.rfc-editor.org/info/rfc{self.rfc.rfc_number}"',
+        )
+
     def test_detail_get_returns_200(self):
         response = self.client.get(
             reverse("errata_detail", kwargs={"pk": self.erratum.pk})
         )
         self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            f'href="https://www.rfc-editor.org/info/rfc{self.erratum.rfc_number}"',
+        )
 
     def test_new_entry_instructions_get_returns_200(self):
         response = self.client.get(reverse("errata_new_entry_instructions"))
@@ -737,6 +761,10 @@ class RpcViewTest(TestCase):
         self.client.force_login(self.rpc_user)
         response = self.client.get(reverse("errata_staged_list"))
         self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            f'href="https://www.rfc-editor.org/info/rfc{self.staged.rfc_number}"',
+        )
 
     def test_staged_list_post_delete_redirects_to_confirm(self):
         self.client.force_login(self.rpc_user)
@@ -892,12 +920,24 @@ class RpcViewTest(TestCase):
         response = self.client.get(reverse("errata_reported_list"))
         self.assertEqual(response.status_code, 200)
 
+    def test_reported_list_links_rfc_to_rfc_editor(self):
+        self.client.force_login(self.rpc_user)
+        response = self.client.get(reverse("errata_reported_list"))
+        self.assertContains(
+            response,
+            f'href="https://www.rfc-editor.org/info/rfc{self.rfc.rfc_number}"',
+        )
+
     def test_reported_classify_get_returns_200(self):
         self.client.force_login(self.rpc_user)
         response = self.client.get(
             reverse("errata_reported_classify", kwargs={"erratum_id": self.erratum.id})
         )
         self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            f'href="https://www.rfc-editor.org/info/rfc{self.erratum.rfc_number}"',
+        )
 
     @patch("errata.views.send_erratum_classified_notification")
     def test_reported_classify_post_mark_verified(self, mock_notify):
@@ -1038,6 +1078,10 @@ class RpcViewTest(TestCase):
             reverse("errata_rpc_reclassify", kwargs={"erratum_id": erratum.id})
         )
         self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            f'href="https://www.rfc-editor.org/info/rfc{erratum.rfc_number}"',
+        )
 
     def test_rpc_reclassify_reported_erratum_returns_404(self):
         # Newly reported errata go through reported_classify, not reclassify.
