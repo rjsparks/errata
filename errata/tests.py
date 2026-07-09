@@ -32,6 +32,7 @@ from errata.models import (
     Status,
 )
 from errata.search import filter_staged_errata, search_errata
+from errata.utils import with_rfc_has_verified
 
 
 class AddressListFieldTest(TestCase):
@@ -131,6 +132,24 @@ class RfcMetadataModelTest(TestCase):
     def test_str(self):
         rfc = RfcMetadataFactory(rfc_number=4321, title="Some Protocol")
         self.assertEqual(str(rfc), "RFC 4321: Some Protocol")
+
+    def test_with_rfc_has_verified_annotation(self):
+        rfc = RfcMetadataFactory()
+        # A reported (unverified) erratum does not count.
+        reported = ErratumFactory(rfc_metadata=rfc, rfc_number=rfc.rfc_number)
+        annotated = with_rfc_has_verified(
+            Erratum.objects.filter(pk=reported.pk)
+        ).get()
+        self.assertFalse(annotated.rfc_has_verified)
+        ErratumFactory(
+            rfc_metadata=rfc,
+            rfc_number=rfc.rfc_number,
+            status=Status.objects.get(slug="verified"),
+        )
+        annotated = with_rfc_has_verified(
+            Erratum.objects.filter(pk=reported.pk)
+        ).get()
+        self.assertTrue(annotated.rfc_has_verified)
 
 
 class ErratumModelTest(TestCase):
@@ -591,6 +610,29 @@ class PublicViewTest(TestCase):
             response,
             f'href="https://www.rfc-editor.org/info/rfc{self.erratum.rfc_number}"',
         )
+
+    def test_detail_no_inline_errata_link_without_verified(self):
+        # setUp's only erratum is reported, not verified.
+        response = self.client.get(
+            reverse("errata_detail", kwargs={"pk": self.erratum.pk})
+        )
+        self.assertNotContains(response, "inline-errata")
+
+    def test_detail_shows_inline_errata_link_when_verified(self):
+        ErratumFactory(
+            rfc_metadata=self.rfc,
+            rfc_number=self.rfc.rfc_number,
+            status=Status.objects.get(slug="verified"),
+        )
+        response = self.client.get(
+            reverse("errata_detail", kwargs={"pk": self.erratum.pk})
+        )
+        self.assertContains(
+            response,
+            f'href="https://www.rfc-editor.org/rfc/inline-errata/'
+            f'rfc{self.rfc.rfc_number}.html"',
+        )
+        self.assertContains(response, ">inline-errata</a>")
 
     def test_new_entry_instructions_get_returns_200(self):
         response = self.client.get(reverse("errata_new_entry_instructions"))

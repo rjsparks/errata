@@ -35,7 +35,7 @@ from .models import (
 )
 from .search import filter_staged_errata, search_errata
 from .tasks import update_rfc_metadata_task
-from .utils import can_classify, unverified_errata
+from .utils import can_classify, unverified_errata, with_rfc_has_verified
 
 logger = logging.getLogger(__name__)
 
@@ -49,11 +49,13 @@ def search(request):
     form = ErrataSearchForm(request.GET)
     if form.is_bound and form.is_valid() and request.GET != {}:
         errata = search_errata(form)
-        template = (
-            "errata/list.html"
-            if form.cleaned_data.get("presentation") == "table"
-            else "errata/list_detail.html"
-        )
+        if form.cleaned_data.get("presentation") == "table":
+            template = "errata/list.html"
+        else:
+            template = "errata/list_detail.html"
+            # The record view links to inline errata when an RFC has any
+            # verified erratum; annotate to avoid a per-row query.
+            errata = with_rfc_has_verified(errata)
         search_ran = True
     else:
         errata = Erratum.objects.none()
@@ -66,8 +68,8 @@ def search(request):
 
 @require_GET
 def detail(request, pk):
-    erratum = Erratum.objects.prefetch_related(
-        "rfc_metadata", "status", "erratum_type"
+    erratum = with_rfc_has_verified(
+        Erratum.objects.prefetch_related("rfc_metadata", "status", "erratum_type")
     ).get(pk=pk)
     return render(request, "errata/detail.html", dict(erratum=erratum))
 
@@ -210,9 +212,11 @@ def staged_list(request):
             )
         else:
             pass
-    staged_errata = StagedErratum.objects.filter(
-        entry_status=StagedErratumStatus.SUBMITTED
-    ).order_by("submitted_at")
+    staged_errata = with_rfc_has_verified(
+        StagedErratum.objects.filter(
+            entry_status=StagedErratumStatus.SUBMITTED
+        ).order_by("submitted_at")
+    )
     return render(
         request,
         "errata/staged_list.html",
@@ -375,7 +379,7 @@ def staged_rpc_add_to_unverified(request, staged_erratum_id, erratum_type):
 
 @role_required("rpc", "verifier")
 def reported_list(request):
-    reported = unverified_errata(request.user)
+    reported = with_rfc_has_verified(unverified_errata(request.user))
     return render(request, "errata/reported_list.html", dict(errata=reported))
 
 
@@ -384,7 +388,11 @@ def reported_classify(request, erratum_id: int):
     # TODO: Consider not filtering to "reported" and showing
     # a simple "this erratum has already been classified" instead
     # of a 400 if the status isn't reported.
-    erratum = get_object_or_404(Erratum, id=erratum_id, status_id="reported")
+    erratum = get_object_or_404(
+        with_rfc_has_verified(Erratum.objects.all()),
+        id=erratum_id,
+        status_id="reported",
+    )
     # Make sure this user can manipulate this erratum
     if not can_classify(request.user, erratum_id):
         raise Http404
@@ -421,7 +429,8 @@ def rpc_reclassify(request, erratum_id: int):
     # classified (i.e. is no longer in the "reported" state). Newly reported
     # errata go through reported_classify instead.
     erratum = get_object_or_404(
-        Erratum.objects.exclude(status_id="reported"), id=erratum_id
+        with_rfc_has_verified(Erratum.objects.exclude(status_id="reported")),
+        id=erratum_id,
     )
     if request.method == "POST":
         action = request.POST.get("action", "")

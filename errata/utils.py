@@ -10,12 +10,28 @@ from functools import reduce
 import rpcapi_client
 from email.policy import EmailPolicy
 
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 
 from errata_auth.utils import is_rpc, is_verifier
 
 from .models import Erratum, RfcMetadata
 from .rpcapi import with_rpcapi
+
+
+def with_rfc_has_verified(queryset):
+    """Annotate each row with ``rfc_has_verified``: whether its RFC has any
+    verified erratum.
+
+    Works for querysets of any model exposing ``rfc_number`` (Erratum and
+    StagedErratum), avoiding a per-row query in the templates.
+    """
+    return queryset.annotate(
+        rfc_has_verified=Exists(
+            Erratum.objects.filter(
+                rfc_number=OuterRef("rfc_number"), status_id="verified"
+            )
+        )
+    )
 
 
 def unverified_errata(user):
