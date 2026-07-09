@@ -738,6 +738,24 @@ class RpcViewTest(TestCase):
         response = self.client.get(reverse("errata_staged_list"))
         self.assertEqual(response.status_code, 200)
 
+    def test_staged_list_shows_total_reports(self):
+        # setUp already created one SUBMITTED staged erratum; add two more.
+        for _ in range(2):
+            StagedErratumFactory(
+                rfc_metadata=self.rfc,
+                rfc_number=self.rfc.rfc_number,
+                entry_status=StagedErratumStatus.SUBMITTED,
+            )
+        # An unsubmitted entry must not be counted.
+        StagedErratumFactory(
+            rfc_metadata=self.rfc,
+            rfc_number=self.rfc.rfc_number,
+            entry_status=StagedErratumStatus.INCOMPLETE,
+        )
+        self.client.force_login(self.rpc_user)
+        response = self.client.get(reverse("errata_staged_list"))
+        self.assertContains(response, "Total reports: 3")
+
     def test_staged_list_post_delete_redirects_to_confirm(self):
         self.client.force_login(self.rpc_user)
         response = self.client.post(
