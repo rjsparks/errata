@@ -373,10 +373,36 @@ def staged_rpc_add_to_unverified(request, staged_erratum_id, erratum_type):
     )
 
 
+# Show the table-of-contents navigation once the combined list gets long
+# enough that scrolling to a section is tedious.
+REPORTED_LIST_TOC_THRESHOLD = 10
+
+
 @role_required("rpc", "verifier")
 def reported_list(request):
-    reported = unverified_errata(request.user)
-    return render(request, "errata/reported_list.html", dict(errata=reported))
+    reported = unverified_errata(request.user).order_by("rfc_number")
+    sections = [
+        {
+            "title": "Reported Technical",
+            "anchor": "reported-technical",
+            "errata": reported.filter(erratum_type__slug="technical"),
+        },
+        {
+            "title": "Reported Editorial",
+            "anchor": "reported-editorial",
+            "errata": reported.filter(erratum_type__slug="editorial"),
+        },
+    ]
+    total = reported.count()
+    return render(
+        request,
+        "errata/reported_list.html",
+        dict(
+            sections=sections,
+            total=total,
+            show_toc=total > REPORTED_LIST_TOC_THRESHOLD,
+        ),
+    )
 
 
 @role_required("rpc", "verifier")
