@@ -32,6 +32,7 @@ from errata.models import (
     Status,
 )
 from errata.search import filter_staged_errata, search_errata
+from errata.utils import with_rfc_has_verified
 from errata.views import REPORTED_LIST_TOC_THRESHOLD
 
 
@@ -132,6 +133,20 @@ class RfcMetadataModelTest(TestCase):
     def test_str(self):
         rfc = RfcMetadataFactory(rfc_number=4321, title="Some Protocol")
         self.assertEqual(str(rfc), "RFC 4321: Some Protocol")
+
+    def test_with_rfc_has_verified_annotation(self):
+        rfc = RfcMetadataFactory()
+        # A reported (unverified) erratum does not count.
+        reported = ErratumFactory(rfc_metadata=rfc, rfc_number=rfc.rfc_number)
+        annotated = with_rfc_has_verified(Erratum.objects.filter(pk=reported.pk)).get()
+        self.assertFalse(annotated.rfc_has_verified)
+        ErratumFactory(
+            rfc_metadata=rfc,
+            rfc_number=rfc.rfc_number,
+            status=Status.objects.get(slug="verified"),
+        )
+        annotated = with_rfc_has_verified(Erratum.objects.filter(pk=reported.pk)).get()
+        self.assertTrue(annotated.rfc_has_verified)
 
 
 class ErratumModelTest(TestCase):
@@ -597,11 +612,68 @@ class PublicViewTest(TestCase):
         )
         self.assertEqual(response.status_code, 200)
 
+    def test_search_table_links_rfc_to_rfc_editor(self):
+        response = self.client.get(
+            reverse("errata_search"),
+            {"rfc_number": self.rfc.rfc_number, "presentation": "table"},
+        )
+        self.assertContains(
+            response,
+            f'href="https://www.rfc-editor.org/info/rfc{self.rfc.rfc_number}"',
+        )
+
+    def test_search_records_links_rfc_to_rfc_editor(self):
+        response = self.client.get(
+            reverse("errata_search"),
+            {"rfc_number": self.rfc.rfc_number, "presentation": "records"},
+        )
+        self.assertContains(
+            response,
+            f'href="https://www.rfc-editor.org/info/rfc{self.rfc.rfc_number}"',
+        )
+
     def test_detail_get_returns_200(self):
         response = self.client.get(
             reverse("errata_detail", kwargs={"pk": self.erratum.pk})
         )
         self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            f'href="https://www.rfc-editor.org/info/rfc{self.erratum.rfc_number}"',
+        )
+
+    @override_settings(RFC_EDITOR_BASE="https://example.test/")
+    def test_detail_rfc_link_honors_rfc_editor_base_setting(self):
+        response = self.client.get(
+            reverse("errata_detail", kwargs={"pk": self.erratum.pk})
+        )
+        self.assertContains(
+            response,
+            f'href="https://example.test/info/rfc{self.erratum.rfc_number}"',
+        )
+
+    def test_detail_no_inline_errata_link_without_verified(self):
+        # setUp's only erratum is reported, not verified.
+        response = self.client.get(
+            reverse("errata_detail", kwargs={"pk": self.erratum.pk})
+        )
+        self.assertNotContains(response, "inline-errata")
+
+    def test_detail_shows_inline_errata_link_when_verified(self):
+        ErratumFactory(
+            rfc_metadata=self.rfc,
+            rfc_number=self.rfc.rfc_number,
+            status=Status.objects.get(slug="verified"),
+        )
+        response = self.client.get(
+            reverse("errata_detail", kwargs={"pk": self.erratum.pk})
+        )
+        self.assertContains(
+            response,
+            f'href="https://www.rfc-editor.org/rfc/inline-errata/'
+            f'rfc{self.rfc.rfc_number}.html"',
+        )
+        self.assertContains(response, ">inline-errata</a>")
 
     def test_new_entry_instructions_get_returns_200(self):
         response = self.client.get(reverse("errata_new_entry_instructions"))
@@ -772,6 +844,10 @@ class RpcViewTest(TestCase):
         self.client.force_login(self.rpc_user)
         response = self.client.get(reverse("errata_staged_list"))
         self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            f'href="https://www.rfc-editor.org/info/rfc{self.staged.rfc_number}"',
+        )
 
     def test_staged_list_shows_total_reports(self):
         # setUp already created one SUBMITTED staged erratum; add two more.
@@ -945,6 +1021,14 @@ class RpcViewTest(TestCase):
         response = self.client.get(reverse("errata_reported_list"))
         self.assertEqual(response.status_code, 200)
 
+    def test_reported_list_links_rfc_to_rfc_editor(self):
+        self.client.force_login(self.rpc_user)
+        response = self.client.get(reverse("errata_reported_list"))
+        self.assertContains(
+            response,
+            f'href="https://www.rfc-editor.org/info/rfc{self.rfc.rfc_number}"',
+        )
+
     def test_reported_list_shows_total(self):
         # setUp created one technical reported erratum; add two editorial.
         editorial = ErratumType.objects.get(slug="editorial")
@@ -979,9 +1063,7 @@ class RpcViewTest(TestCase):
 
     def test_reported_list_shows_toc_when_long(self):
         for _ in range(REPORTED_LIST_TOC_THRESHOLD):
-            ErratumFactory(
-                rfc_metadata=self.rfc, rfc_number=self.rfc.rfc_number
-            )
+            ErratumFactory(rfc_metadata=self.rfc, rfc_number=self.rfc.rfc_number)
         self.client.force_login(self.rpc_user)
         response = self.client.get(reverse("errata_reported_list"))
         self.assertContains(response, "On this page")
@@ -994,6 +1076,10 @@ class RpcViewTest(TestCase):
             reverse("errata_reported_classify", kwargs={"erratum_id": self.erratum.id})
         )
         self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            f'href="https://www.rfc-editor.org/info/rfc{self.erratum.rfc_number}"',
+        )
 
     @patch("errata.views.send_erratum_classified_notification")
     def test_reported_classify_post_mark_verified(self, mock_notify):
@@ -1134,6 +1220,10 @@ class RpcViewTest(TestCase):
             reverse("errata_rpc_reclassify", kwargs={"erratum_id": erratum.id})
         )
         self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            f'href="https://www.rfc-editor.org/info/rfc{erratum.rfc_number}"',
+        )
 
     def test_rpc_reclassify_reported_erratum_returns_404(self):
         # Newly reported errata go through reported_classify, not reclassify.
@@ -1419,6 +1509,31 @@ class UtilsTest(TestCase):
         from errata.utils import can_classify
 
         self.assertFalse(can_classify(self.rpc_user, 999999))
+
+    @override_settings(RFC_EDITOR_BASE="https://www.rfc-editor.org/")
+    def test_rfc_info_url(self):
+        from errata.utils import rfc_info_url
+
+        self.assertEqual(rfc_info_url(1234), "https://www.rfc-editor.org/info/rfc1234")
+
+    @override_settings(RFC_EDITOR_BASE="https://www.rfc-editor.org/")
+    def test_rfc_inline_errata_url(self):
+        from errata.utils import rfc_inline_errata_url
+
+        self.assertEqual(
+            rfc_inline_errata_url(1234),
+            "https://www.rfc-editor.org/rfc/inline-errata/rfc1234.html",
+        )
+
+    @override_settings(RFC_EDITOR_BASE="https://example.test")
+    def test_rfc_urls_honor_setting_without_trailing_slash(self):
+        from errata.utils import rfc_info_url, rfc_inline_errata_url
+
+        self.assertEqual(rfc_info_url(42), "https://example.test/info/rfc42")
+        self.assertEqual(
+            rfc_inline_errata_url(42),
+            "https://example.test/rfc/inline-errata/rfc42.html",
+        )
 
 
 class StagedErrataFilterFormTest(TestCase):

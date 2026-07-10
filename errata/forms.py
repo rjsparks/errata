@@ -22,6 +22,7 @@ class CaseInsensitiveChoiceField(forms.ChoiceField):
                 return str(choice_value)
         return value
 
+
 STATUS_CHOICES = [
     ("any", "All/Any"),
     ("verified_reported", "Verified+Reported"),
