@@ -9,7 +9,7 @@
         <div class="col-lg-8">
             <div class="card mb-4">
                 <div class="card-header bg-info text-dark">
-                    <h2 class="mb-0"><a href="https://www.rfc-editor.org/info/rfc{{ erratum.rfc_number }}" rel="noopener" target="_blank">RFC {{ erratum.rfc_number }}</a>{% if erratum.rfc_has_verified %} <a href="https://www.rfc-editor.org/rfc/inline-errata/rfc{{ erratum.rfc_number }}.html" rel="noopener" target="_blank" class="small">inline-errata</a>{% endif %}, "{{ erratum.rfc_metadata.title }}", {{ erratum.rfc_metadata.publication_month|month_name }} {{ erratum.rfc_metadata.publication_year }}</h2>
+                    <h2 class="mb-0"><a href="{{ erratum.rfc_number|rfc_info_url }}" rel="noopener" target="_blank">RFC {{ erratum.rfc_number }}</a>{% if erratum.rfc_has_verified %} <a href="{{ erratum.rfc_number|rfc_inline_errata_url }}" rel="noopener" target="_blank" class="small">inline-errata</a>{% endif %}, "{{ erratum.rfc_metadata.title }}", {{ erratum.rfc_metadata.publication_month|month_name }} {{ erratum.rfc_metadata.publication_year }}</h2>
                 </div>
                 <div class="card-body{% if erratum.rfc_metadata.obsoleted_by %} bg-danger text-light{% elif erratum.rfc_metadata.updated_by %} bg-warning text-light{% endif %}">
                     <p class="mb-0"><strong>Source of RFC:</strong> {{ erratum.rfc_metadata.display_source }}</p>

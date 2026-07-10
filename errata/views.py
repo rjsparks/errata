@@ -432,9 +432,9 @@ def reported_classify(request, erratum_id: int):
                 form.save()
                 return redirect("errata_reported_classify", erratum_id=erratum.id)
             elif action.startswith("mark_") and action[5:] in (
-                    "verified",
-                    "rejected",
-                    "held_for_doc_update",
+                "verified",
+                "rejected",
+                "held_for_doc_update",
             ):
                 erratum = form.save(commit=False)
                 erratum.status_id = action[5:]
