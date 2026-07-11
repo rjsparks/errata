@@ -85,6 +85,10 @@ def unverified_errata(user):
     ]:
         if role in user_roles:
             queries_to_union.append(Q(rfc_metadata__stream="irtf"))
+    # The CFRG chair may verify errata for RFCs published by CFRG. This is
+    # specific to CFRG; research group chairs do not get this in general.
+    if ["chair", "cfrg"] in user_roles:
+        queries_to_union.append(Q(rfc_metadata__group_acronym="cfrg"))
     # Editorial Stream
     for role in [
         ["chair", "rsab"],
